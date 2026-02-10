@@ -4,7 +4,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import pkg from 'selenium-webdriver';
-const { Builder, By, Key, until, Actions } = pkg;
+const { Builder, By, until } = pkg;
 import { Options as ChromeOptions } from 'selenium-webdriver/chrome.js';
 import { Options as FirefoxOptions } from 'selenium-webdriver/firefox.js';
 import { Options as EdgeOptions } from 'selenium-webdriver/edge.js';
@@ -37,7 +37,7 @@ const getLocator = (by, value) => {
         case 'css': return By.css(value);
         case 'xpath': return By.xpath(value);
         case 'name': return By.name(value);
-        case 'tag': return By.css(value);
+        case 'tag': return By.tagName(value);
         case 'class': return By.className(value);
         default: throw new Error(`Unsupported locator strategy: ${by}`);
     }
@@ -46,7 +46,7 @@ const getLocator = (by, value) => {
 // Common schemas
 const browserOptionsSchema = z.object({
     headless: z.boolean().optional().describe("Run browser in headless mode"),
-    arguments: z.array(z.string()).optional().describe("Additional browser arguments")
+    browserArgs: z.array(z.string()).optional().describe("Additional browser arguments")
 }).optional();
 
 const locatorSchema = {
@@ -73,8 +73,8 @@ server.tool(
                     if (options.headless) {
                         chromeOptions.addArguments('--headless=new');
                     }
-                    if (options.arguments) {
-                        options.arguments.forEach(arg => chromeOptions.addArguments(arg));
+                    if (options.browserArgs) {
+                        options.browserArgs.forEach(arg => chromeOptions.addArguments(arg));
                     }
                     driver = await builder
                         .forBrowser('chrome')
@@ -87,8 +87,8 @@ server.tool(
                     if (options.headless) {
                         edgeOptions.addArguments('--headless=new');
                     }
-                    if (options.arguments) {
-                        options.arguments.forEach(arg => edgeOptions.addArguments(arg));
+                    if (options.browserArgs) {
+                        options.browserArgs.forEach(arg => edgeOptions.addArguments(arg));
                     }
                     driver = await builder
                         .forBrowser('edge')
@@ -101,8 +101,8 @@ server.tool(
                     if (options.headless) {
                         firefoxOptions.addArguments('--headless');
                     }
-                    if (options.arguments) {
-                        options.arguments.forEach(arg => firefoxOptions.addArguments(arg));
+                    if (options.browserArgs) {
+                        options.browserArgs.forEach(arg => firefoxOptions.addArguments(arg));
                     }
                     driver = await builder
                         .forBrowser('firefox')
@@ -111,7 +111,9 @@ server.tool(
                     break;
                 }
                 default: {
-                    throw new Error(`Unsupported browser: ${browser}`);
+                    return {
+                    content: [{ type: 'text', text: `Unsupported browser: ${browser}` }]
+                };
                 }
             }
             const sessionId = `${browser}_${Date.now()}`;
@@ -447,15 +449,20 @@ server.tool(
 // Resources
 server.resource(
     "browser-status",
-    new ResourceTemplate("browser-status://current"),
-    async (uri) => ({
-        contents: [{
-            uri: uri.href,
-            text: state.currentSession
-                ? `Active browser session: ${state.currentSession}`
-                : "No active browser session"
-        }]
-    })
+    new ResourceTemplate(
+        "browser-status://{status}",
+        {
+            list: async () => ({ resources: [{ name: "browser-status", uri: "browser-status://current", params: { status: "current" } }] }),
+            get: async (uri) => ({
+                contents: [{
+                    uri: uri.href,
+                    text: state.currentSession
+                        ? `Active browser session: ${state.currentSession}`
+                        : "No active browser session"
+                }]
+            })
+        }
+    )
 );
 
 // Cleanup handler
